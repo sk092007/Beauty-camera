@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Vivo-style Camera — Final</title>
+<style>
+  :root{
+    --bg:#000;
+    --glass: rgba(255,255,255,0.06);
+    --glass-2: rgba(255,255,255,0.10);
+    --accent: #FFD600;
+    --muted: rgba(255,255,255,0.65);
+    --btn-size:64px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;color:#fff; -webkit-tap-highlight-color: transparent;}
+  #cameraContainer{position:relative;width:100vw;height:100vh;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;}
+  canvas#preview{position:absolute;top:0;left:0;width:100%;height:100%;background:#000;display:block;touch-action:none;}
+  video#video{display:none;}
+  /* Top bar */
+  #topBar{position:absolute;top:0;left:0;right:0;height:58px;display:flex;align-items:center;justify-content:space-between;padding:8px 12px;z-index:90}
+  #topLeft,#topRight{display:flex;align-items:center;gap:10px}
+  .topIcon{width:44px;height:44px;border-radius:10px;background:var(--glass);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;backdrop-filter: blur(6px);cursor:pointer}
+  #galleryThumb{overflow:hidden;width:44px;height:44px;border-radius:8px;background:var(--glass);display:flex;align-items:center;justify-content:center}
+  #galleryThumb img{width:100%;height:100%;object-fit:cover;display:block}
+  #title{color:var(--accent);font-weight:700}
+  /* Hint */
+  #hint{position:absolute;left:12px;bottom:130px;color:#fff;font-size:12px;opacity:0.95;z-index:60}
+  /* Emoji panel left */
+  #emojiPanel{position:absolute;left:10px;top:80px;display:flex;flex-direction:column;gap:10px;z-index:70}
+  .emojiBtn{width:50px;height:50px;border-radius:12px;background:var(--glass);display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;backdrop-filter: blur(6px)}
+  /* Tabs & filter strip bottom */
+  #filterTabs{position:absolute;left:0;right:0;bottom:0;padding:12px 10px 18px 10px;display:flex;flex-direction:column;align-items:center;gap:8px;z-index:90}
+  .tabs{display:flex;gap:18px;align-items:center;font-weight:700;color:var(--muted)}
+  .tab{padding:6px 12px;border-radius:18px;cursor:pointer}
+  .tab.active{color:var(--accent)}
+  #filterStrip{display:flex;gap:8px;overflow:auto;padding:8px;border-radius:12px;background:rgba(0,0,0,0.35);backdrop-filter: blur(6px);max-width:95%}
+  .filterThumb{min-width:64px;height:64px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;padding:6px;background:rgba(255,255,255,0.03);cursor:pointer;flex:0 0 auto;transition:transform .12s ease}
+  .filterThumb.active{outline:2px solid var(--accent);transform:scale(1.03)}
+  /* Controls center bottom */
+  #controls{position:absolute;bottom:14px;left:0;right:0;display:flex;justify-content:space-around;align-items:center;padding:0 20px;z-index:95}
+  .btn{width:var(--btn-size);height:var(--btn-size);border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--glass-2);border:1px solid rgba(255,255,255,0.06);color:#fff;font-size:20px;cursor:pointer;backdrop-filter: blur(8px);transition:transform .12s ease}
+  .btn:active{transform:scale(.96)}
+  .capture{width:92px;height:92px;border-radius:50%;border:3px solid rgba(255,255,255,0.95);background:transparent;font-size:26px}
+  /* Sticker nodes */
+  .sticker{position:absolute;z-index:80;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;cursor:grab;pointer-events:auto}
+  .sticker:active{cursor:grabbing}
+  /* modal preview */
+  #previewModal{position:fixed;inset:0;background:rgba(0,0,0,0.78);display:none;align-items:center;justify-content:center;z-index:200}
+  #previewCard{width:92%;max-width:760px;background:#111;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
+  #previewMedia{width:100%;height:auto;border-radius:8px;background:#000;display:block}
+  #previewActions{display:flex;gap:8px;justify-content:flex-end}
+  .actionBtn{padding:8px 12px;border-radius:8px;background:var(--glass);cursor:pointer;color:#fff}
+  /* settings modal */
+  #settingsModal{position:fixed;right:12px;top:72px;background:rgba(0,0,0,0.9);padding:12px;border-radius:10px;backdrop-filter: blur(10px);z-index:210;display:none;color:#fff}
+  .settingRow{margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
+  label{font-size:13px;color:#ddd}
+  select,input[type=range]{padding:6px;border-radius:8px;border:none;background:rgba(255,255,255,0.04);color:#fff}
+  /* small rec indicator */
+  #recIndicator{padding:6px 8px;border-radius:12px;background:linear-gradient(90deg,#ff4b4b,#ffb84b);display:none}
+  /* small responsiveness */
+  @media (max-width:420px){
+    .filterThumb{min-width:56px;height:56px}
+    .emojiBtn{width:44px;height:44px}
+  }
+</style>
+</head>
+<body>
+<div id="cameraContainer">
+  <canvas id="preview"></canvas>
+  <video id="video" autoplay playsinline muted></video>
+
+  <!-- Top bar -->
+  <div id="topBar">
+    <div id="topLeft">
+      <div id="title">CAM</div>
+    </div>
+    <div id="topRight">
+      <div id="galleryThumb" title="Gallery"><img id="galleryImg" src="" style="display:none"></div>
+      <div id="settingsBtn" class="topIcon" title="Settings">⚙️</div>
+    </div>
+  </div>
+
+  <!-- Left emoji panel -->
+  <div id="emojiPanel">
+    <div class="emojiBtn" data-emoji="😀">😀</div>
+    <div class="emojiBtn" data-emoji="❤️">❤️</div>
+    <div class="emojiBtn" data-emoji="🔥">🔥</div>
+    <div class="emojiBtn" data-emoji="😎">😎</div>
+    <div class="emojiBtn" data-emoji="🎉">🎉</div>
+  </div>
+
+  <div id="hint">Swipe left/right or tap a thumb to change filter • Drag/Pinch/Rotate stickers • Double-tap sticker to remove</div>
+
+  <!-- Bottom: tabs & filter strip -->
+  <div id="filterTabs">
+    <div class="tabs">
+      <div class="tab" data-mode="beauty">FACE BEAUTY</div>
+      <div class="tab active" data-mode="photo">TAKE PHOTO</div>
+      <div class="tab" data-mode="video">VIDEOS</div>
+    </div>
+    <div id="filterStrip"></div>
+  </div>
+
+  <!-- Controls -->
+  <div id="controls">
+    <div class="btn" id="switchBtn" title="Switch camera">🔄</div>
+    <div class="btn" id="micBtn" title="Mic ON/OFF">🎤</div>
+    <div class="btn capture" id="captureBtn" title="Capture">📸</div>
+    <div class="btn" id="recordBtn" title="Record">🎥</div>
+    <div class="btn" id="openSettingsBtn" title="Open Settings">⋯</div>
+  </div>
+</div>
+
+<!-- Preview modal -->
+<div id="previewModal">
+  <div id="previewCard">
+    <img id="previewMedia" src="" alt="preview" style="display:block">
+    <video id="previewVideo" controls style="display:none;max-width:100%"></video>
+    <div id="previewActions">
+      <div class="actionBtn" id="discardBtn">Discard</div>
+      <div class="actionBtn" id="saveBtn">Save</div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div id="settingsModal">
+  <div class="settingRow">
+    <label>Resolution</label>
+    <select id="resolutionSelect"><option value="720">720p</option><option value="1080" selected>1080p</option></select>
+  </div>
+  <div class="settingRow">
+    <label>Mirror Front Camera</label>
+    <select
+    id="mirrorSelect"><option value="false">Off</option><option value="true" selected>On</option></select>
+  </div>
+  <div class="settingRow">
+    <label>Filter Strength</label>
+    <input id="filterStrength" type="range" min="0.6" max="1.6" step="0.01" value="1">
+  </div>
+  <div style="display:flex;justify-content:flex-end">
+    <div class="actionBtn" id="closeSettings">Close</div>
+  </div>
+</div>
+
+<script>
+/* Final Vivo-like Camera App
+ Features:
+  - responsive fullscreen canvas preview
+  - swipe & thumbnails filters
+  - capture photo includes filters+stickers
+  - record video (canvas capture) includes audio optionally (mic toggle)
+  - front/back switch, settings modal, gallery thumb
+  - stickers drag/pinch/rotate + double-tap remove
+*/
+
+// DOM
+const video = document.getElementById('video');
+const canvas = document.getElementById('preview');
+const ctx = canvas.getContext('2d',{alpha:false});
+const filterStrip = document.getElementById('filterStrip');
+const tabs = document.querySelectorAll('.tab');
+const galleryImg = document.getElementById('galleryImg');
+const galleryThumb = document.getElementById('galleryThumb');
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsModal = document.getElementById('settingsModal');
+const resolutionSelect = document.getElementById('resolutionSelect');
+const mirrorSelect = document.getElementById('mirrorSelect');
+const filterStrengthInput = document.getElementById('filterStrength');
+const captureBtn = document.getElementById('captureBtn');
+const recordBtn = document.getElementById('recordBtn');
+const switchBtn = document.getElementById('switchBtn');
+const micBtn = document.getElementById('micBtn');
+const previewModal = document.getElementById('previewModal');
+const previewMediaImg = document.getElementById('previewMedia');
+const previewMediaVideo = document.getElementById('previewVideo');
+const saveBtn = document.getElementById('saveBtn');
+const discardBtn = document.getElementById('discardBtn');
+const openSettingsBtn = document.getElementById('openSettingsBtn');
+
+// state
+let stream = null;
+let facingMode = 'user';
+let desiredRes = parseInt(resolutionSelect.value,10) || 1080;
+let mirrorFront = mirrorSelect.value === 'true';
+let filterStrength = parseFloat(filterStrengthInput.value) || 1;
+let currentMode = 'photo'; // beauty | photo | video
+let currentFilter = 0;
+let stickers = []; // {id,emoji,xPct,yPct,sizePct,rot}
+let stickerIdCounter = 1;
+let drawing = false;
+let recording = false;
+let mediaRecorder = null;
+let recordedChunks = [];
+let micEnabled = true;
+
+// DPR helpers
+function DPR(){ return Math.max(1, window.devicePixelRatio||1); }
+function W(){ return window.innerWidth; }
+function H(){ return window.innerHeight; }
+
+// Filters (realistic + extra). CSS-like strings used in ctx.filter
+const filters = [
+  {name:'Normal', css:'none'},
+  {name:'Face Beauty', css:'contrast(0.96) brightness(1.05) saturate(1.06) blur(0.8px)'},
+  {name:'Soft Blur', css:'blur(2px) brightness(1.06)'},
+  {name:'Smooth Skin', css:'contrast(0.95) brightness(1.07) saturate(1.08)'},
+  {name:'Cinematic', css:'contrast(1.16) brightness(1.03) saturate(1.06)'},
+  {name:'Cool Tone', css:'hue-rotate(200deg) contrast(1.02) brightness(1.03)'},
+  {name:'Warm Glow', css:'sepia(0.18) brightness(1.06) saturate(1.12)'},
+  {name:'Dreamy', css:'blur(1.4px) brightness(1.12) saturate(1.04)'},
+  {name:'Retro', css:'contrast(1.08) sepia(0.15) brightness(0.98)'},
+  {name:'Neon Pop', css:'contrast(1.2) saturate(1.3) brightness(1.06)'},
+  {name:'Pastel', css:'saturate(1.2) brightness(1.08) hue-rotate(18deg)'},
+  {name:'HDR Boost', css:'contrast(1.28) brightness(1.08) saturate(1.18)'}
+];
+
+// canvas sizing
+function resizeCanvas(){
+  const dpr = DPR();
+  const w = Math.floor(W() * dpr);
+  const h = Math.floor(H() * dpr);
+  if(canvas.width !== w || canvas.height !== h){
+    canvas.width = w; canvas.height = h;
+    canvas.style.width = W() + 'px';
+    canvas.style.height = H() + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+}
+
+// open camera with constraints
+async function openCamera(){
+  try{
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    const constraints = {
+      audio: true,
+      video: {
+        facingMode,
+        width: { ideal: desiredRes },
+        height: { ideal: Math.round(desiredRes * (16/9)) },
+        frameRate: { ideal: 30 }
+      }
+    };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    // mute/unmute mic according to micEnabled
+    stream.getAudioTracks().forEach(t => t.enabled = !!micEnabled);
+    video.srcObject = stream;
+    await video.play();
+    startDrawLoop();
+  }catch(e){
+    alert('Camera error: ' + e);
+  }
+}
+openCamera();
+
+// switch camera
+switchBtn.addEventListener('click', ()=>{ facingMode = (facingMode==='user')?'environment':'user'; openCamera(); });
+
+// mic toggle
+micBtn.addEventListener('click', ()=>{
+  micEnabled = !micEnabled;
+  micBtn.textContent = micEnabled ? '🎤' : '🔇';
+  if(stream) stream.getAudioTracks().forEach(t => t.enabled = micEnabled);
+});
+
+// settings 
+settingsBtn.addEventListener('click', ()=> settingsModal.style.display = settingsModal.style.display === 'block' ? 'none' : 'block');
+openSettingsBtn.addEventListener('click', ()=> settingsModal.style.display = settingsModal.style.display === 'block' ? 'none' : 'block');
+document.getElementById('closeSettings').addEventListener('click', ()=> settingsModal.style.display = 'none');
+resolutionSelect.addEventListener('change', ()=> { desiredRes = parseInt(resolutionSelect.value,10); openCamera(); });
+mirrorSelect.addEventListener('change', ()=> { mirrorFront = mirrorSelect.value === 'true'; });
+filterStrengthInput.addEventListener('input', ()=> { filterStrength = parseFloat(filterStrengthInput.value); });
+
+// build filter thumbnails (shows text + live preview snapshots)
+async function buildFilterStrip(){
+  filterStrip.innerHTML = '';
+  // We'll capture a small preview frame for each filter by drawing once to an offscreen canvas
+  const off = document.createElement('canvas');
+  const ow = Math.min(160, Math.floor(W()*0.2));
+  const oh = Math.floor(ow * 9/16);
+  off.width = ow; off.height = oh;
+  const offCtx = off.getContext('2d');
+  // draw current video frame into offscreen & create thumbs
+  for(let i=0;i<filters.length;i++){
+    const f = filters[i];
+    const thumb = document.createElement('div');
+    thumb.className = 'filterThumb' + (i===currentFilter?' active':'');
+    thumb.dataset.idx = i;
+    thumb.innerHTML = `<div style="text-align:center;font-size:11px">${f.name}</div>`;
+    thumb.addEventListener('click', ()=> { currentFilter = i; updateFilterUI(); });
+    filterStrip.appendChild(thumb);
+    // draw small live preview (if video ready)
+    if(video && video.readyState >= 2){
+      // draw video frame scaled to off canvas
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const scale = Math.max(ow/vw, oh/vh);
+      const sw = vw * (ow / (vw*scale));
+      // simpler: draw video to off canvas and apply CSS filter by drawing twice not possible; simpler show name and let live apply on canvas
+    }
+  }
+}
+buildFilterStrip();
+
+function updateFilterUI(){
+  document.querySelectorAll('.filterThumb').forEach(n=>n.classList.remove('active'));
+  const el = document.querySelector('.filterThumb[data-idx="'+currentFilter+'"]');
+  if(el) el.classList.add('active');
+  // scroll into view a bit
+  if(el) el.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
+}
+
+// swipe to change filter
+let startX = 0;
+document.addEventListener('touchstart', e => { if(e.touches && e.touches[0]) startX = e.touches[0].clientX; });
+document.addEventListener('touchend', e => {
+  if(!e.changedTouches || !e.changedTouches[0]) return;
+  const endX = e.changedTouches[0].clientX;
+  if(Math.abs(endX - startX) > 50){
+    if(endX < startX) currentFilter = (currentFilter + 1) % filters.length;
+    else currentFilter = (currentFilter - 1 + filters.length) % filters.length;
+    updateFilterUI();
+  }
+});
+
+// tab mode switching
+tabs.forEach(t=>{
+  t.addEventListener('click', ()=>{
+    tabs.forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const mode = t.dataset.mode;
+    currentMode = (mode==='beauty')?'beauty':(mode==='photo'?'photo':'video');
+    document.getElementById('modeLabel') && (document.getElementById('modeLabel').textContent = t.textContent);
+    // when in video mode, show record button prominence
+    if(currentMode==='video'){
+      recordBtn.style.display = '';
+      captureBtn.style.display = 'none';
+    } else {
+      recordBtn.style.display = '';
+      captureBtn.style.display = '';
+    }
+  });
+});
+
+// DRAW LOOP: draw video to canvas as COVER, then draw stickers
+function startDrawLoop(){
+  if(drawing) return;
+  drawing = true;
+  function loop(ts){
+    resizeCanvas();
+    const cw = canvas.width / DPR(), ch = canvas.height / DPR();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(video && video.readyState >= 2 && video.videoWidth){
+      // compute cover scaling
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const scale = Math.max(cw / vw, ch / vh);
+      const sw = cw / scale, sh = ch / scale;
+      const sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+      
+      // apply mirror if front & mirror enabled
+      ctx.save();
+      if(facingMode === 'user' && mirrorFront){
+        ctx.translate(cw, 0);
+        ctx.scale(-1, 1);
+      }
+      // apply filter
+      const cssFilter = applyFilterCss();
+      ctx.filter = cssFilter;
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
+      ctx.restore();
+      ctx.filter = 'none';
+    } else {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+
+    // draw stickers
+    stickers.forEach(s=>{
+      const sizePx = s.sizePct * cw;
+      const xPx = s.xPct * cw;
+      const yPx = s.yPct * ch;
+      ctx.save();
+      ctx.translate(xPx, yPx);
+      ctx.rotate(s.rot || 0);
+      ctx.font = `${sizePx}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(s.emoji, 0, 0);
+      ctx.restore();
+    });
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+
+// compute css filter string with strength
+function applyFilterCss(){
+  const base = filters[currentFilter].css || 'none';
+  if(base === 'none') return `brightness(${filterStrength})`;
+  return `${base} brightness(${filterStrength})`;
+}
+
+/* --- Stickers: creation and pointer interactions (drag, pinch, rotate, double-tap remove) --- */
+function addSticker(emoji){
+  const id = 's' + stickerIdCounter++;
+  const s = {id, emoji, xPct:0.5, yPct:0.45, sizePct:0.18, rot:0};
+  stickers.push(s);
+  createStickerNode(s);
+}
+
+function createStickerNode(s){
+  const el = document.createElement('div');
+  el.className = 'sticker';
+  el.dataset.id = s.id;
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  const size = s.sizePct * cw;
+  el.style.width = size + 'px';
+  el.style.height = size + 'px';
+  el.style.left = (s.xPct * cw - size/2) + 'px';
+  el.style.top = (s.yPct * ch - size/2) + 'px';
+  el.style.fontSize = size + 'px';
+  el.textContent = s.emoji;
+  document.body.appendChild(el);
+
+  let pointers = {};
+  let base = null;
+
+  el.addEventListener('pointerdown', ev=>{
+    ev.preventDefault();
+    el.setPointerCapture(ev.pointerId);
+    pointers[ev.pointerId] = {x:ev.clientX, y:ev.clientY};
+    if(Object.keys(pointers).length === 1){
+      base = {
+        startX: ev.clientX,
+        startY: ev.clientY,
+        left: parseFloat(el.style.left),
+        top: parseFloat(el.style.top),
+        size: parseFloat(el.style.width),
+        rot: s.rot
+      };
+    } else if(Object.keys(pointers).length === 2){
+      const ids = Object.keys(pointers);
+      const p1 = pointers[ids[0]], p2 = pointers[ids[1]];
+      base.pinch = {
+        dist: Math.hypot(p2.x - p1.x, p2.y - p1.y),
+        angle: Math.atan2(p2.y - p1.y, p2.x - p1.x),
+        sizePct: s.sizePct,
+        rot: s.rot
+      };
+    }
+  });
+  
+  el.addEventListener('pointermove', ev=>{
+    ev.preventDefault();
+    if(!pointers[ev.pointerId]) return;
+    pointers[ev.pointerId] = {x:ev.clientX, y:ev.clientY};
+    const keys = Object.keys(pointers);
+    if(keys.length === 1 && base){
+      const dx = ev.clientX - base.startX;
+      const dy = ev.clientY - base.startY;
+      const left = base.left + dx;
+      const top = base.top + dy;
+      const cw = canvas.clientWidth, ch = canvas.clientHeight;
+      const w = parseFloat(el.style.width);
+      el.style.left = Math.max(0, Math.min(left, cw - w)) + 'px';
+      el.style.top = Math.max(0, Math.min(top, ch - w)) + 'px';
+      s.xPct = (parseFloat(el.style.left) + w/2) / cw;
+      s.yPct = (parseFloat(el.style.top) + w/2) / ch;
+    } else if(keys.length >= 2 && base && base.pinch){
+      const ids = Object.keys(pointers);
+      const p1 = pointers[ids[0]], p2 = pointers[ids[1]];
+      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+      const scale = dist / base.pinch.dist;
+      s.sizePct = Math.max(0.06, Math.min(0.6, base.pinch.sizePct * scale));
+      s.rot = base.pinch.rot + (angle - base.pinch.angle);
+      const sizePx = s.sizePct * canvas.clientWidth;
+      el.style.width = sizePx + 'px';
+      el.style.height = sizePx + 'px';
+      el.style.fontSize = sizePx + 'px';
+      el.style.transform = `rotate(${s.rot}rad)`;
+      el.style.left = (s.xPct * canvas.clientWidth - sizePx/2) + 'px';
+      el.style.top = (s.yPct * canvas.clientHeight - sizePx/2) + 'px';
+    }
+  });
+
+  el.addEventListener('pointerup', ev=>{
+    delete pointers[ev.pointerId];
+    el.releasePointerCapture(ev.pointerId);
+    base = null;
+  });
+  el.addEventListener('pointercancel', ev=>{
+    delete pointers[ev.pointerId];
+    el.releasePointerCapture(ev.pointerId);
+    base = null;
+  });
+
+  // double-tap to remove
+  let lastTap = 0;
+  el.addEventListener('pointerdown', ev=>{
+    const now = Date.now();
+    if(now - lastTap < 300){
+      stickers = stickers.filter(x=>x.id !== s.id);
+      el.remove();
+    }
+    lastTap = now;
+  });
+}
+
+// add stickers from panel
+document.querySelectorAll('.emojiBtn').forEach(btn=>{
+  btn.addEventListener('click', ()=> addSticker(btn.dataset.emoji) );
+});
+
+// Capture photo => canvas.toDataURL (already has filters + stickers)
+captureBtn.addEventListener('click', ()=>{
+  const data = canvas.toDataURL('image/png');
+  previewMediaImg.style.display = 'block';
+  previewMediaVideo.style.display
+  = 'none';
+  previewMediaImg.src = data;
+  previewModal.style.display = 'flex';
+  saveBtn.onclick = ()=>{
+    const a = document.createElement('a');
+    a.href = data;
+    a.download = `VivoSnap_${filters[currentFilter].name.replace(/\s+/g,'_')}.png`;
+    a.click();
+    // update gallery preview
+    galleryImg.src = data; galleryImg.style.display = 'block';
+    previewModal.style.display = 'none';
+  };
+  discardBtn.onclick = ()=> previewModal.style.display = 'none';
+});
+
+// Recording
+recordBtn.addEventListener('click', ()=>{
+  if(!recording){
+    startRecording();
+  } else stopRecording();
+});
+
+async function startRecording(){
+  recordedChunks = [];
+  const canvasStream = canvas.captureStream(30);
+  // add mic if available & enabled
+  if(stream && stream.getAudioTracks().length && micEnabled){
+    try{ canvasStream.addTrack(stream.getAudioTracks()[0]); }catch(e){}
+  }
+  try{
+    mediaRecorder = new MediaRecorder(canvasStream, {mimeType:'video/webm;codecs=vp8,opus'});
+  } catch(e){
+    alert('Recording not supported: ' + e);
+    return;
+  }
+  mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = ()=> {
+    const blob = new Blob(recordedChunks, {type:'video/webm'});
+    const url = URL.createObjectURL(blob);
+    previewMediaImg.style.display = 'none';
+    previewMediaVideo.style.display = 'block';
+    previewMediaVideo.src = url;
+    previewModal.style.display = 'flex';
+    saveBtn.onclick = ()=>{
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `VivoSnap_${filters[currentFilter].name.replace(/\s+/g,'_')}.webm`;
+      a.click();
+      // create thumbnail for gallery
+      createThumbnailFromVideoBlob(blob).then(dataUrl=>{
+        galleryImg.src = dataUrl; galleryImg.style.display = 'block';
+      });
+      previewModal.style.display = 'none';
+      setTimeout(()=>URL.revokeObjectURL(url),15000);
+    };
+    discardBtn.onclick = ()=> { previewModal.style.display = 'none'; setTimeout(()=>URL.revokeObjectURL(url),500); };
+    recording = false;
+    recordBtn.textContent = '🎥';
+    document.getElementById('recIndicator') && (document.getElementById('recIndicator').style.display = 'none');
+  };
+  mediaRecorder.start(200);
+  recording = true;
+  recordBtn.textContent = '⏹️';
+  // show small recording indicator in topRight if wanted (create if missing)
+  document.getElementById('recIndicator') && (document.getElementById('recIndicator').style.display = 'inline-block');
+}
+
+function stopRecording(){ if(mediaRecorder) mediaRecorder.stop(); }
+
+// create thumbnail from video blob
+function createThumbnailFromVideoBlob(blob){
+  return new Promise(resolve=>{
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.src = URL.createObjectURL(blob);
+    v.muted = true;
+    v.playsInline = true;
+    v.addEventListener('loadeddata', ()=>{
+      v.currentTime = Math.min(0.3, v.duration/2 || 0);
+    });
+    v.addEventListener('seeked', ()=>{
+      const tw = Math.min(320, W());
+      const th = Math.min(180, Math.floor(H()*0.25));
+      const cv = document.createElement('canvas');
+      cv.width = tw; cv.height = th;
+      const cctx = cv.getContext('2d');
+      cctx.drawImage(v, 0, 0, tw, th);
+      const data = cv.toDataURL('image/png');
+      URL.revokeObjectURL(v.src);
+      resolve(data);
+    });
+    setTimeout(()=> resolve(''), 3000);
+  });
+}
+
+// gallery click show preview
+galleryThumb.addEventListener('click', ()=>{
+  if(!galleryImg.src) return;
+  previewMediaImg.style.display = 'block';
+  previewMediaVideo.style.display = 'none';
+  previewMediaImg.src = galleryImg.src;
+  previewModal.style.display = 'flex';
+  saveBtn.onclick = ()=>{
+    const a = document.createElement('a');
+    a.href = galleryImg.src;
+    a.download = 'gallery_item.png';
+    a.click();
+    previewModal.style.display = 'none';
+  };
+  discardBtn.onclick = ()=> previewModal.style.display = 'none';
+});
+
+// helpers: capture thumbnail from canvas
+function captureThumbnailFromCanvas(){
+  const tw = Math.min(320, W()), th = Math.min(180, Math.floor(H()*0.25));
+  const cv = document.createElement('canvas');
+  cv.width = tw; cv.height = th;
+  const cctx = cv.getContext('2d');
+  cctx.drawImage(canvas, 0, 0, tw, th);
+  return cv.toDataURL('image/png');
+}
+
+// render stickers DOM nodes when window resizes or sticker added
+function renderStickerDOM(){
+  document.querySelectorAll('.sticker').forEach(n=>n.remove());
+  stickers.forEach(s=> createStickerNode(s) );
+}
+
+// ensure canvas starts drawing when video plays
+video.addEventListener('play', ()=>{
+  resizeCanvas();
+  startDrawLoop();
+  renderStickerDOM();
+});
+
+// responsive resize
+window.addEventListener('resize', ()=> { resizeCanvas(); renderStickerDOM(); });
+
+// initial size & UI build
+resizeCanvas();
+buildFilterStrip();
+updateFilterUI();
+
+// close preview modal on outside click
+previewModal.addEventListener('click', (e)=> { if(e.target === previewModal) previewModal.style.display = 'none'; });
+
+// quick keyboard (desktop)
+document.addEventListener('keydown', e=>{ if(e.key==='c') captureBtn.click(); if(e.key==='r') recordBtn.click(); if(e.key==='s') switchBtn.click(); });
+
+</script>
+</body>
+</html>
